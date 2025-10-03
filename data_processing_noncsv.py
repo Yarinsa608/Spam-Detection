@@ -1,60 +1,76 @@
 import os
 import re
-import pandas as pd
-import argparse
+import csv
+from bs4 import BeautifulSoup
 from email import policy
 from email.parser import BytesParser
 
-#Command-line arguments
-parser = argparse.ArgumentParser(description="Clean raw email files for spam/ham detection")
-parser.add_argument("spam_folder", type=str, help="Path to the folder containing spam emails")
-parser.add_argument("ham_folder", type=str, help="Path to the folder containing ham emails")
-parser.add_argument("--output", type=str, default="./processed_emails.csv", help="Output CSV file path")
-args = parser.parse_args()
+# config
+INPUT_DIRS = {
+    "spam": "spam_emails",
+    "ham": "ham_emails"
+}
+OUTPUT_CSV = "cleaned_spam_assassin_emails.csv"
 
-#Load Raw Email Files
-def load_emails_from_folder(folder_path, label):
-    emails = []
-    for filename in os.listdir(folder_path):
-        file_path = os.path.join(folder_path, filename)
-        if not filename.endswith(".txt") and not filename.endswith(".eml"):
-            continue
-        try:
-            with open(file_path, "rb") as f:
-                msg = BytesParser(policy=policy.default).parse(f)
-                subject = msg['subject'] if msg['subject'] else ""
-                body = msg.get_body(preferencelist=('plain'))
-                body_text = body.get_content() if body else ""
-                text = subject + " " + body_text
-                emails.append({"text": text, "label": label})
-        except Exception as e:
-            print(f"Error reading {file_path}: {e}")
-    return emails
 
-# Load emails using folder paths from command line
-spam_emails = load_emails_from_folder(args.spam_folder, 1)
-ham_emails  = load_emails_from_folder(args.ham_folder, 0)
-
-# Combine into one DataFrame
-df_raw = pd.DataFrame(spam_emails + ham_emails)
-print("Loaded emails:", df_raw.shape)
-
-#Clean Email Text
 def clean_text(text):
     text = str(text).lower()
-    text = re.sub(r'from:.*|to:.*|subject:.*|return-path:.*|received:.*|date:.*', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'-----original message-----', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'http\S+|www\S+', ' ', text)
+    # Remove typical email headers/footers
+    text = re.sub(r'-----original message-----|from:.*|sent:.*|to:.*|subject:.*', '', text, flags=re.MULTILINE)
+    # Remove all non-alphanumeric characters (keep spaces)
     text = re.sub(r'[^\w\s]', ' ', text)
+    # Normalize spaces
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
-df_raw['cleaned_text'] = df_raw['text'].apply(clean_text)
+def extract_body_from_email(filepath):
+    with open(filepath, 'rb') as f:
+        msg = BytesParser(policy=policy.default).parse(f)
 
-# Feature engineering
-df_raw['text_length'] = df_raw['cleaned_text'].apply(len)
-df_raw['punc_count'] = df_raw['text'].apply(lambda x: len([c for c in str(x) if c in '!?$']))
+    subject = msg['subject'] if msg['subject'] else ""
+    body = ""
 
-# Save to CSV
-df_raw.to_csv(args.output, index=False)
-print(f"dataset saved to {args.output}")
+    if msg.is_multipart():
+        for part in msg.walk():
+            ctype = part.get_content_type()
+            if ctype == "text/plain":
+                body = part.get_content()
+                break
+            elif ctype == "text/html":
+                html = part.get_content()
+                body = BeautifulSoup(html, "html.parser").get_text()
+                break
+    else:
+        ctype = msg.get_content_type()
+        if ctype == "text/plain":
+            body = msg.get_content()
+        elif ctype == "text/html":
+            html = msg.get_content()
+            body = BeautifulSoup(html, "html.parser").get_text()
+
+    # Combine subject and body before cleaning
+    return clean_text(subject + " " + body)
+
+def main():
+    emails = []
+    for label, folder in INPUT_DIRS.items():
+        for filename in os.listdir(folder):
+            filepath = os.path.join(folder, filename)
+            if os.path.isfile(filepath):
+                try:
+                    cleaned = extract_body_from_email(filepath)
+                    # Convert label to 0/1
+                    label_numeric = 1 if label == "spam" else 0
+                    emails.append([cleaned, label_numeric])
+                except Exception as e:
+                    print(f"Failed to process {filepath}: {e}")
+
+    with open(OUTPUT_CSV, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["text", "label"])
+        writer.writerows(emails)
+
+    print(f"Cleaned {len(emails)} emails saved to {OUTPUT_CSV}")
+
+if __name__ == "__main__":
+    main()
