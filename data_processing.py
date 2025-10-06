@@ -2,10 +2,26 @@ import pandas as pd
 import re
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+import os
+import joblib # Needed to save the scaler object
+
+# --- Setup and directory creation (Safety Check) ---
+output_dirs = ['./data', './visualizations', './models']
+for dir_name in output_dirs:
+    if not os.path.exists(dir_name):
+        os.makedirs(dir_name)
+print("Project directories checked/created.")
+
 
 #----------------Enron spam detection (text analysis)------------------------
+print("\nStarting Enron data processing...")
+
 #Load Enron data
-df_enron = pd.read_csv('./data/enron_spam_data.csv')
+try:
+    df_enron = pd.read_csv('./data/enron_spam_data.csv')
+except FileNotFoundError:
+    print("FATAL ERROR: enron_spam_data.csv not found. Place it in the './data/' folder and try again.")
+    exit()
 
 #Drop the 'Date' column
 df_enron = df_enron.drop(columns=['Date'])
@@ -46,12 +62,18 @@ print("Enron data processing complete.")
 # Save this intermediate file to the data folder
 df_enron.to_csv('./data/processed_enron.csv', index=False)
 
+
 #----------------Phishing detection (numerical analysis)------------------------
+print("\nStarting Phishing data processing...")
+
 #Load Phishing data (Assuming Result is the label)
-df_phish = pd.read_csv('./data/dataset_full.csv')
+try:
+    df_phish = pd.read_csv('./data/dataset_full.csv')
+except FileNotFoundError:
+    print("FATAL ERROR: dataset_full.csv not found. Place it in the './data/' folder and try again.")
+    exit()
 
 # Assuming the label column is the last one
-# Assuming the column is named 'class' or 'label' for now.
 label_col = df_phish.columns[-1]
 
 X_phish = df_phish.drop(columns=[label_col]) # Features are all the qty_* columns
@@ -69,4 +91,7 @@ X_test_scaled = scaler.transform(X_test_ph)
 
 print("Phishing data scaling complete.")
 
-#Don't save the scaled data, but the scaler object will be saved later.
+#Save the scaler object (required for new predictions in the future)
+joblib.dump(scaler, './models/phish_scaler.joblib')
+
+print("\nData processing successfully completed.")
