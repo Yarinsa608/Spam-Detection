@@ -45,7 +45,12 @@ def vectorize_and_train(df, label_col, dataset_name):
     #---Enron classification ML type1 text--
     label_col = prepare_label(df)
     text_col = get_text_column(df)
+<<<<<<< HEAD
      # Preprocessing: replace NaN in text with empty string
+=======
+
+    # Preprocessing: replace NaN in text with empty string
+>>>>>>> 3881e8bfc39976b8c4896dd1bcef30064de52a53
     # CRITICAL FIX: Replace NaN values in the text column with an empty string.
     # This prevents the "np.nan is an invalid document" ValueError in TfidfVectorizer.
     X = df[text_col].fillna('')
@@ -53,6 +58,12 @@ def vectorize_and_train(df, label_col, dataset_name):
 
     # Train/Test split
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+<<<<<<< HEAD
+=======
+
+
+#Vectorization (Feature Extraction)
+>>>>>>> 3881e8bfc39976b8c4896dd1bcef30064de52a53
     vector = TfidfVectorizer(max_features=5000)
     X_train_vec = vector.fit_transform(X_train)
     X_test_vec = vector.transform(X_test)
