@@ -13,55 +13,7 @@ from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, adjusted_rand_score
-
-
-# --- Ensure output directories exist ---
-os.makedirs('./models', exist_ok=True)
-os.makedirs('./visualizations', exist_ok=True)
-print("Output directories checked/created.")
-
-# --- Initial setup ---
-try:
-    # Load processed data
-    df_enron = pd.read_csv('./data/preprocessed/processed_enron.csv')
-    df_phish = pd.read_csv('./data/dataset_full.csv')
-    
-    # Use a robust way to determine the phishing label column
-    label_col_guess = df_phish.columns[-1]
-    if 'label' in label_col_guess.lower() or 'phish' in label_col_guess.lower():
-        label_col = label_col_guess
-    else:
-        label_col = label_col_guess 
-        print(f"Warning: Phishing label column assumed to be '{label_col}'. Verify this is correct.")
-        
-except FileNotFoundError:
-    print("FATAL ERROR: Data files not found. Run data_processing.py first.")
-    exit()
-
-# Load scaled data/scaler to avoid re-splitting/re-scaling if possible
-try:
-    scaler = joblib.load('./models/phish_scaler.joblib')
-    
-    # Recreate split and scale here for consistent logic, using the loaded scaler
-    X_phish = df_phish.drop(columns=[label_col])
-    y_phish = df_phish[label_col]
-    X_train_ph, X_test_ph, y_train_ph, y_test_ph = train_test_split(X_phish, y_phish, test_size=0.2, random_state=42)
-    X_train_scaled = scaler.transform(X_train_ph)
-    X_test_scaled = scaler.transform(X_test_ph)
-
-except FileNotFoundError:
-    # Fallback if scaler wasn't saved (will rerun the scaling logic)
-    print("Warning: Phishing scaler not found. Re-splitting, re-scaling, and saving new scaler...")
-    X_phish = df_phish.drop(columns=[label_col])
-    y_phish = df_phish[label_col]
-    X_train_ph, X_test_ph, y_train_ph, y_test_ph = train_test_split(X_phish, y_phish, test_size=0.2, random_state=42)
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train_ph)
-    X_test_scaled = scaler.transform(X_test_ph)
-    
-    # FIX 2: Save the newly fitted scaler for future consistency
-    joblib.dump(scaler, './models/phish_scaler.joblib')
-    print("New phishing scaler saved to ./models/phish_scaler.joblib.")
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, adjusted_rand_score
 
 #------------------Helper Functions-------------------
 
@@ -81,14 +33,9 @@ def get_text_column(df):
         df['coconut'] = df['subject'].astype(str) + " " + df['body'].astype(str)
         return 'coconut'
     else:
-        raise ValueError("No text related columns found: 'cleaned_text', 'text', 'subject', or 'body'")
-
-
-
-
-# Automatically guess the label column for classification
+          raise ValueError("No text related columns found: 'cleaned_text', 'text', 'subject', or 'body'")
+    # Automatically guess the label column for classification
 def prepare_label(df):
-
     possible_labels = [col for col in df.columns if col.lower() in ['label','spam','phish','spam/ham','ham']]
     if not possible_labels:
         raise ValueError("No valid categorical label found in dataset!")
@@ -96,26 +43,16 @@ def prepare_label(df):
 #-------------------------Model training and evaluation------------------
 def vectorize_and_train(df, label_col, dataset_name):
     #---Enron classification ML type1 text--
-#Prepare Enron data for training
     label_col = prepare_label(df)
     text_col = get_text_column(df)
-
-<<<<<<< HEAD
-#Replace NaN values in the text column with an empty string.
-X_enron = X_enron.fillna('') 
-=======
-    # Preprocessing: replace NaN in text with empty string
+     # Preprocessing: replace NaN in text with empty string
     # CRITICAL FIX: Replace NaN values in the text column with an empty string.
-# This prevents the "np.nan is an invalid document" ValueError in TfidfVectorizer.
+    # This prevents the "np.nan is an invalid document" ValueError in TfidfVectorizer.
     X = df[text_col].fillna('')
     y = df[label_col]
 
     # Train/Test split
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
->>>>>>> eb4141d6b68ea7829e404138399cdb3429a2cc64
-
-
-#Vectorization (Feature Extraction)
     vector = TfidfVectorizer(max_features=5000)
     X_train_vec = vector.fit_transform(X_train)
     X_test_vec = vector.transform(X_test)
@@ -130,15 +67,13 @@ X_enron = X_enron.fillna('')
     X_train_scaled = scaler.fit_transform(X_train_dense)
     X_test_scaled = scaler.transform(X_test_dense)
     print(f"Scaling complete for {dataset_name}.\n")
-
-#Train Model A (Baseline: Naive Bayes)
+    #Train Model A (Baseline: Naive Bayes)
     model_nb = MultinomialNB()
     model_nb.fit(X_train_vec, y_train)
     preds_nb = model_nb.predict(X_test_vec)
     acc_nb = accuracy_score(y_test, preds_nb)
     print(f"{dataset_name} - Naive Bayes Accuracy: {acc_nb:.4f}")
-
-#Train Model B (Advanced: Logistic Regression)
+    #Train Model B (Advanced: Logistic Regression)
     model_lr = LogisticRegression(max_iter=1000)
     model_lr.fit(X_train_vec, y_train)
     preds_lr = model_lr.predict(X_test_vec)
@@ -152,7 +87,6 @@ X_enron = X_enron.fillna('')
     joblib.dump(scaler, f'./models/{dataset_name}_scaler.joblib')
     print(f"{dataset_name} models and vector saved.\n")
 #---Phishing classification, clustering ML type2,3--
-
 #Train Phishing Classifier (Model C: Gradient Boosting)
     model_gb = GradientBoostingClassifier(n_estimators=100, learning_rate=0.1)
     model_gb.fit(X_train_vec, y_train)
@@ -160,28 +94,23 @@ X_enron = X_enron.fillna('')
     acc_gb = accuracy_score(y_test, preds_gb)
     print(f"{dataset_name} - Gradient Boosting Accuracy: {acc_gb:.4f}")
     joblib.dump(model_gb, f'./models/{dataset_name}_gradientBabe.joblib')
-
-  #Clustering (ML Type 2: Unsupervised Learning for complexity)
+    #Clustering (ML Type 2: Unsupervised Learning for complexity)
     kmeans = KMeans(n_clusters=2, random_state=42, n_init=10)
     kmeans.fit(X_train_vec)
     ari_score = adjusted_rand_score(y_train, kmeans.labels_)
     print(f"{dataset_name} - KMeans ARI: {ari_score:.4f}\n")
-
     # Return vectors and labels for further use (e.g., testing)
     return X_train_vec, X_test_vec, y_train, y_test
 
 
-
-
-#------------------Visualization-------------------------------
+    #------------------Visualization-------------------------------
 def generate_visualizations(df, label_col, dataset_name):
     print("\nGenerating visualizations...")
     # Save folder two levels up
     output_folder = os.path.join( 'visualizations')
     os.makedirs(output_folder, exist_ok=True)
     print(output_folder)
-
-
+    
 # 1. Class Imbalance Plot (Bar Chart with annotations)
     plt.figure(figsize=(7, 5))
     ax = sns.countplot(x=label_col, data=df)

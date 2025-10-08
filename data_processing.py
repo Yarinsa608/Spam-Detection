@@ -1,8 +1,13 @@
-import pandas as pd
-import re
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
 import os
+import re
+import pandas as pd
+import nltk
+from nltk.corpus import stopwords
+from sklearn.model_selection import train_test_split
+import joblib
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
 import joblib # Needed to save the scaler object
 import nltk
 
@@ -13,88 +18,145 @@ for dir_name in output_dirs:
     if not os.path.exists(dir_name):
         os.makedirs(dir_name)
 print("Project directories checked/created.")
+#---------------- spam detection (text analysis)------------------------
+print("\nStarting  data processing...")
+
+nltk.download('stopwords', quiet=True)
+stop_words = set(stopwords.words('english'))
+extra_stopwords = {
+    "would", "could", "should", "will", "get", "know", "use", "say", "see", "make",
+    "go", "like", "also", "thank", "regards", "please", "dear", "let", "us", "ok", "me","you"
+}
+stop_words |= extra_stopwords
+
+# ----------------------------
+# Cleaning function
+# ----------------------------
+def clean_dataset_basic(text):
+    '''
+    Clean and normalise Email text  BY:
+    1. Convert ot lowercase
+    2.replace mail/urls with blank
+    3.remove punctuation,digits and extra whitespace
+    4. remove stopwords
 
 
-#----------------Enron spam detection (text analysis)------------------------
-print("\nStarting Enron data processing...")
+'''
 
-# FIX: Missing block for loading df_enron data was re-added
-#Load Enron data
-try:
-    df_enron = pd.read_csv('./data/enron_spam_data.csv')
-except FileNotFoundError:
-    print("FATAL ERROR: enron_spam_data.csv not found. Place it in the './data/' folder and try again.")
-    exit()
-
-#Drop the 'Date' column
-df_enron = df_enron.drop(columns=['Date'])
-
-#Combine Subject and Message into one text column 
-#Fill any missing messages/subjects with an empty string first
-df_enron['text'] = df_enron['Subject'].fillna('') + ' ' + df_enron['Message'].fillna('')
-
-#Rename the label column and convert 'spam' to 1, 'ham' to 0
-df_enron.rename(columns={'Spam/Ham': 'label'}, inplace=True)
-df_enron['label'] = df_enron['label'].map({'ham': 0, 'spam': 1})
-
-#Keep only the final columns need
-df_enron = df_enron[['text', 'label']]
-
-print("Enron Data Shape:", df_enron.shape)
-print("Enron Label Distribution:\n", df_enron['label'].value_counts())
-
-#Function to clean text
-def clean_text(text):
-    text = str(text).lower()
-    # 1. Remove email headers/footers often seen in forwarded emails
-    text = re.sub(r'-----original message-----|from:.*|sent:.*|to:.*|subject:.*', '', text, flags=re.MULTILINE)
-    # 2. Remove all non-alphanumeric characters (keep spaces)
-    text = re.sub(r'[^\w\s]', ' ', text)
-    # 3. Remove extra spaces
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text
-
-#Apply cleaning
-df_enron['cleaned_text'] = df_enron['text'].apply(clean_text)
-
-#Feature engineering for visualization (Count features)
-df_enron['text_length'] = df_enron['cleaned_text'].apply(len)
-df_enron['punc_count'] = df_enron['text'].apply(lambda x: len([c for c in str(x) if c in '!?$']))
-
-print("Enron data processing complete.")
-# FIX: Save this intermediate file to the new preprocessed folder
-df_enron.to_csv('./data/preprocessed/processed_enron.csv', index=False)
+    text=text.lower()
+    #Potenially we could extarct with urls and sender stuff
+    #Easiest way would be to detect based on sender recieved and patterns but would eventually be invalid
+    text=re.sub(r"\S+@\s+","EMAIL",text)
+    text = re.sub(r"http\S+|www\S+|mailto:\S+", "", text)#URLS purger
+    #Remove punctuation,digits and special chars
+    #older
+    # text = re.sub(r"[^a-z\s]", " ", text)      #Remove any punct SPECIAL CHARS OR NUMS
+    text=re.sub(r"\s", " ",text).strip()#Remove extra spaces
+    #split and remove Stop words
+    words=text.split()
+    words= [x for x in words if x not in stop_words and len(x)>1]
+    #Rejoin 
+    text=' '.join(words)
+  
+    return text.strip()
 
 
-#----------------Phishing detection (numerical analysis)------------------------
-print("\nStarting Phishing data processing...")
 
-#Load Phishing data (Assuming Result is the label)
-try:
-    df_phish = pd.read_csv('./data/dataset_full.csv')
-except FileNotFoundError:
-    print("FATAL ERROR: dataset_full.csv not found. Place it in the './data/' folder and try again.")
-    exit()
+# ----------------------------
+# Preprocess function
+# ----------------------------
+def preprocess_all():
+    try:
+        dataset_selection = int(input(
+            "Please select a dataset:\n"
+            " 1: Enron\n"
+            " 2: Figshare\n"
+            " 3: NaserPhishingDataset\n"
+            " 4: Cyber Cop\n"
+        ))
+        match dataset_selection:
+            case 1:
+                data_folder = os.path.join('data', 'raw', 'enron_spam_data-master')
+                dataset = 'enron_spam_data.csv'
+            case 2:
+                data_folder = os.path.join('data', 'raw', 'Seven_Phishing_Email_Datasets')
+                dataset = 'Seven_Phishing_Email_Datasets.csv'
+            case 3:
+                data_folder = os.path.join('data', 'raw', 'Naser-Phishing-Dataset')
+                dataset = 'Naser.csv'
+            case 4:
+                data_folder = os.path.join('data', 'raw')
+                dataset = 'Phishing_Email.csv'
+            case _:
+                raise ValueError("Invalid dataset selection.")
+    except FileNotFoundError:
+         print("FATAL ERROR: dataset not found. Place it in the './data/raw/' folder and try again.")
+         exit()
+    # Determine files to process
+    dataset_path = os.path.join(data_folder, dataset)
+    if os.path.isfile(dataset_path):
+        files = [dataset_path]
+    elif os.path.isdir(data_folder):
+        files = [os.path.join(data_folder, f) for f in os.listdir(data_folder) if f.endswith('.csv')]
+    else:
+        raise ValueError(f"Path does not exist: {dataset_path}")
 
-# Assuming the label column is the last one
-label_col = df_phish.columns[-1]
+    # Create output folder
+    preprocessed_folder = os.path.join('data', 'preprocessed')
+    os.makedirs(preprocessed_folder, exist_ok=True)
+    print(f"Processing {len(files)} file(s)...")
 
-X_phish = df_phish.drop(columns=[label_col]) # Features are all the qty_* columns
-y_phish = df_phish[label_col]                # The label (target)
+    for file_path in files:
+        try:
+            df = pd.read_csv(file_path, encoding='latin1', low_memory=False)
+            print(f"\nLoaded {file_path} with shape {df.shape}")
+        except Exception as e:
+            print(f"Failed to load {file_path}: {e}")
+            continue
 
-#Split the data first
-X_train_ph, X_test_ph, y_train_ph, y_test_ph = train_test_split(X_phish, y_phish, test_size=0.2, random_state=42)
+        # Ensure label exists
+        if 'label' not in df.columns:
+            if 'Spam/Ham' in df.columns:
+                df['label'] = df['Spam/Ham'].map({'ham': 0, 'spam': 1})
+            else:
+                df['label'] = 0  # default if missing
 
-#Instantiate the Scaler (need for numerical ML models)
-scaler = StandardScaler()
+        # Replace empty object columns with empty string
+        for col in df.columns:
+            if df[col].dtype == object:
+                if df[col].isna().all() or df[col].str.strip().eq('').all():
+                    df[col] = ""
 
-#Fit the scaler only on the training data and transform both sets
-X_train_scaled = scaler.fit_transform(X_train_ph)
-X_test_scaled = scaler.transform(X_test_ph)
+        # Build unified text column
+        if 'subject' in df.columns and 'body' in df.columns:
+            df['email_text'] = df['subject'].fillna('') + ' ' + df['body'].fillna('')
+        elif 'body' in df.columns:
+            df['email_text'] = df['body'].fillna('')
+        else:
+            text_col = next((c for c in df.columns if df[c].dtype == object), None)
+            df['email_text'] = df[text_col].fillna('') if text_col else ''
 
-print("Phishing data scaling complete.")
+        # Clean text
+        df['clean_email_text'] = df['email_text'].apply(clean_dataset_basic)
 
-#Save the scaler object (required for new predictions in the future)
-joblib.dump(scaler, './models/phish_scaler.joblib')
+        # Keep final columns
+        final_columns = ['clean_email_text', 'label']
+ 
+        df_final = df[final_columns].rename(columns={'clean_email_text': 'text'})
 
-print("\nData processing successfully completed.")
+        # Save CSV
+        preprocessed_name = os.path.basename(file_path).replace('.csv', '_preprocessed.csv')
+        output_path = os.path.join(preprocessed_folder, preprocessed_name)
+        df_final.to_csv(output_path, index=False, encoding='utf-8')
+        print(f"Saved preprocessed file to: {output_path}")
+
+
+        print(df_final.head(3))
+
+        print("\nData pre-processing successfully completed.")
+        
+if __name__ == "__main__":
+    try:
+        preprocess_all()
+    except Exception as e:
+        print(f"An error occurred during preprocessing: {e}")
