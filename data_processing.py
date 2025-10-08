@@ -4,8 +4,10 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 import os
 import joblib # Needed to save the scaler object
+import nltk
 
 # --- Setup and directory creation (Safety Check) ---
+# FIX: Added './data/preprocessed' to the directory list
 output_dirs = ['./data', './visualizations', './models', './data/preprocessed']
 for dir_name in output_dirs:
     if not os.path.exists(dir_name):
@@ -16,6 +18,7 @@ print("Project directories checked/created.")
 #----------------Enron spam detection (text analysis)------------------------
 print("\nStarting Enron data processing...")
 
+# FIX: Missing block for loading df_enron data was re-added
 #Load Enron data
 try:
     df_enron = pd.read_csv('./data/enron_spam_data.csv')
@@ -59,7 +62,7 @@ df_enron['text_length'] = df_enron['cleaned_text'].apply(len)
 df_enron['punc_count'] = df_enron['text'].apply(lambda x: len([c for c in str(x) if c in '!?$']))
 
 print("Enron data processing complete.")
-# Save this intermediate file to the data folder
+# FIX: Save this intermediate file to the new preprocessed folder
 df_enron.to_csv('./data/preprocessed/processed_enron.csv', index=False)
 
 
