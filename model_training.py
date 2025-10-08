@@ -100,10 +100,6 @@ def vectorize_and_train(df, label_col, dataset_name):
     label_col = prepare_label(df)
     text_col = get_text_column(df)
 
-<<<<<<< HEAD
-#Replace NaN values in the text column with an empty string.
-X_enron = X_enron.fillna('') 
-=======
     # Preprocessing: replace NaN in text with empty string
     # CRITICAL FIX: Replace NaN values in the text column with an empty string.
 # This prevents the "np.nan is an invalid document" ValueError in TfidfVectorizer.
@@ -112,7 +108,6 @@ X_enron = X_enron.fillna('')
 
     # Train/Test split
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
->>>>>>> eb4141d6b68ea7829e404138399cdb3429a2cc64
 
 
 #Vectorization (Feature Extraction)
