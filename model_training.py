@@ -14,7 +14,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, confusion_matrix, adjusted_rand_score
 from sklearn.preprocessing import StandardScaler
 
-# --- FIX 1: Ensure output directories exist ---
+# --- Ensure output directories exist ---
 os.makedirs('./models', exist_ok=True)
 os.makedirs('./visualizations', exist_ok=True)
 print("Output directories checked/created.")
@@ -22,7 +22,7 @@ print("Output directories checked/created.")
 # --- Initial setup ---
 try:
     # Load processed data
-    df_enron = pd.read_csv('./data/processed_enron.csv')
+    df_enron = pd.read_csv('./data/preprocessed/processed_enron.csv')
     df_phish = pd.read_csv('./data/dataset_full.csv')
     
     # Use a robust way to determine the phishing label column
@@ -41,7 +41,7 @@ except FileNotFoundError:
 try:
     scaler = joblib.load('./models/phish_scaler.joblib')
     
-    # Re-create split and scale here for consistent logic, using the loaded scaler
+    # Recreate split and scale here for consistent logic, using the loaded scaler
     X_phish = df_phish.drop(columns=[label_col])
     y_phish = df_phish[label_col]
     X_train_ph, X_test_ph, y_train_ph, y_test_ph = train_test_split(X_phish, y_phish, test_size=0.2, random_state=42)
@@ -142,8 +142,7 @@ print("\n--- Starting Model Training and Evaluation ---")
 X_enron = df_enron['cleaned_text']
 y_enron = df_enron['label']
 
-# 💡 CRITICAL FIX: Replace NaN values in the text column with an empty string.
-# This prevents the "np.nan is an invalid document" ValueError in TfidfVectorizer.
+#Replace NaN values in the text column with an empty string.
 X_enron = X_enron.fillna('') 
 
 X_train_en, X_test_en, y_train_en, y_test_en = train_test_split(X_enron, y_enron, test_size=0.2, random_state=42)

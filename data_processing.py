@@ -6,7 +6,7 @@ import os
 import joblib # Needed to save the scaler object
 
 # --- Setup and directory creation (Safety Check) ---
-output_dirs = ['./data', './visualizations', './models']
+output_dirs = ['./data', './visualizations', './models', './data/preprocessed']
 for dir_name in output_dirs:
     if not os.path.exists(dir_name):
         os.makedirs(dir_name)
@@ -60,7 +60,7 @@ df_enron['punc_count'] = df_enron['text'].apply(lambda x: len([c for c in str(x)
 
 print("Enron data processing complete.")
 # Save this intermediate file to the data folder
-df_enron.to_csv('./data/processed_enron.csv', index=False)
+df_enron.to_csv('./data/preprocessed/processed_enron.csv', index=False)
 
 
 #----------------Phishing detection (numerical analysis)------------------------
