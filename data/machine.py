@@ -2,16 +2,17 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from wordcloud import WordCloud
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, adjusted_rand_score
+import os
+import joblib
+
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.cluster import KMeans
-import joblib
-import os
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, adjusted_rand_score
 
 #------------------Helper Functions-------------------
 
@@ -42,12 +43,86 @@ def prepare_label(df):
     if not possible_labels:
         raise ValueError("No valid categorical label found in dataset!")
     return possible_labels[0]
+#-------------------------Model training and evaluation------------------
+def vectorize_and_train(df, label_col, dataset_name):
+    #---Enron classification ML type1 text--
+#Prepare Enron data for training
+    label_col = prepare_label(df)
+    text_col = get_text_column(df)
 
-# Generate visualizations for a dataset
+    # Preprocessing: replace NaN in text with empty string
+    # CRITICAL FIX: Replace NaN values in the text column with an empty string.
+# This prevents the "np.nan is an invalid document" ValueError in TfidfVectorizer.
+    X = df[text_col].fillna('')
+    y = df[label_col]
+
+    # Train/Test split
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+
+#Vectorization (Feature Extraction)
+    vector = TfidfVectorizer(max_features=5000)
+    X_train_vec = vector.fit_transform(X_train)
+    X_test_vec = vector.transform(X_test)
+    print(f"Vectorization complete for {dataset_name}")
+
+    # Dense conversion for scaling
+    X_train_dense = X_train_vec.toarray()
+    X_test_dense = X_test_vec.toarray()
+
+    # FIX 2: Save the newly fitted scaler for future consistency
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train_dense)
+    X_test_scaled = scaler.transform(X_test_dense)
+    print(f"Scaling complete for {dataset_name}.\n")
+
+#Train Model A (Baseline: Naive Bayes)
+    model_nb = MultinomialNB()
+    model_nb.fit(X_train_vec, y_train)
+    preds_nb = model_nb.predict(X_test_vec)
+    acc_nb = accuracy_score(y_test, preds_nb)
+    print(f"{dataset_name} - Naive Bayes Accuracy: {acc_nb:.4f}")
+
+#Train Model B (Advanced: Logistic Regression)
+    model_lr = LogisticRegression(max_iter=1000)
+    model_lr.fit(X_train_vec, y_train)
+    preds_lr = model_lr.predict(X_test_vec)
+    acc_lr = accuracy_score(y_test, preds_lr)
+    print(f"{dataset_name} - Logistic Regression Accuracy: {acc_lr:.4f}")
+
+    # Save models and vector
+    os.makedirs('./models', exist_ok=True)
+    joblib.dump(model_lr, f'./models/{dataset_name}_logreg_model.joblib')
+    joblib.dump(vector, f'./models/{dataset_name}_vector.joblib')
+    joblib.dump(scaler, f'./models/{dataset_name}_scaler.joblib')
+    print(f"{dataset_name} models and vector saved.\n")
+#---Phishing classification, clustering ML type2,3--
+
+#Train Phishing Classifier (Model C: Gradient Boosting)
+    model_gb = GradientBoostingClassifier(n_estimators=100, learning_rate=0.1)
+    model_gb.fit(X_train_vec, y_train)
+    preds_gb = model_gb.predict(X_test_vec)
+    acc_gb = accuracy_score(y_test, preds_gb)
+    print(f"{dataset_name} - Gradient Boosting Accuracy: {acc_gb:.4f}")
+    joblib.dump(model_gb, f'./models/{dataset_name}_gradientBabe.joblib')
+
+  #Clustering (ML Type 2: Unsupervised Learning for complexity)
+    kmeans = KMeans(n_clusters=2, random_state=42, n_init=10)
+    kmeans.fit(X_train_vec)
+    ari_score = adjusted_rand_score(y_train, kmeans.labels_)
+    print(f"{dataset_name} - KMeans ARI: {ari_score:.4f}\n")
+
+    # Return vectors and labels for further use (e.g., testing)
+    return X_train_vec, X_test_vec, y_train, y_test
+
+
+
+
+#------------------Visualization-------------------------------
 def generate_visualizations(df, label_col, dataset_name):
     print("\nGenerating visualizations...")
 
-    # 1. Class Imbalance Plot (Bar Chart with annotations)
+# 1. Class Imbalance Plot (Bar Chart with annotations)
     plt.figure(figsize=(7, 5))
     ax = sns.countplot(x=label_col, data=df)
     ax.set_xticklabels(['Ham (0)', 'Spam (1)'])
@@ -61,22 +136,21 @@ def generate_visualizations(df, label_col, dataset_name):
     os.makedirs('./visualizations', exist_ok=True)
     plt.savefig(f'./visualizations/{dataset_name}_class_dist.png')
     plt.close()
-
-    # 2. Text Length Distribution (Box Plot)
+# 2. Text Length Distribution (Box Plot - Cleaner than Histogram)
     if 'text' in df.columns:
         df['text_length'] = df['text'].astype(str).apply(len)
-        plt.figure(figsize=(8,6))
+        plt.figure(figsize=(8,6))# The UserWarning about palette is due to an updated seaborn version; this is minor and harmless
         sns.boxplot(x=label_col, y='text_length', hue=label_col, data=df, palette=['green', 'red'], legend=False)
         plt.title(f'{dataset_name} – Text Length')
         plt.xlabel('Email Class (0=Ham, 1=Spam)', fontsize=12)#I do not like this but it works so do not under any cirm touch it 
-        plt.ylabel('Email Character Length', fontsize=12)
+        plt.ylabel('Email Character Length', fontsize=12)# Zoom into the 95th percentile for better visualization
         plt.ylim(0, df['text_length'].quantile(0.95) * 1.1)
         plt.grid(axis='y', linestyle='--')
         plt.tight_layout()
         plt.savefig(f'./visualizations/{dataset_name}_text_length.png')
         plt.close()
 
-    # 3. Word Cloud (Spam)
+# 3. Word Cloud (Spam)
     if 'text' in df.columns:
         spam_text = " ".join(df[df[label_col] == 1]['text'].astype(str))
         wordcloud = WordCloud(width=800, height=400, background_color='white').generate(spam_text)
@@ -87,7 +161,8 @@ def generate_visualizations(df, label_col, dataset_name):
         plt.savefig(f'./visualizations/{dataset_name}_spam_wordcloud.png')
         plt.close()
 
-    # 4. Phishing Feature Box Plot (Number of dots in URL)
+  
+# 4. Phishing Feature Box Plot (Number of dots in URL)
     if 'qty_dot_url' in df.columns:
         plt.figure(figsize=(8, 6))
         sns.boxplot(x=label_col, y='qty_dot_url', data=df)
@@ -100,9 +175,10 @@ def generate_visualizations(df, label_col, dataset_name):
     else:
         print("Skipping 'qty_dot_url' plot- as column not found.")
 
-    # 5. Correlation Heatmap (Top numerical features)
+# 5. Correlation Heatmap (Top features only)
     numerical_df = df.select_dtypes(include=['number'])
     if label_col in numerical_df.columns:
+        # Calculate correlation with the target variable, sort, and take the top features
         corr_to_target = numerical_df.corr()[label_col].sort_values(ascending=False).head(10).index
         corr_matrix_subset = numerical_df[corr_to_target].corr()
         plt.figure(figsize=(8,6))
@@ -115,11 +191,9 @@ def generate_visualizations(df, label_col, dataset_name):
         print(f"Warning Label column '{label_col}' not numeric or missing.")
 
     print(f"Visualizations saved for {dataset_name}")
-def test_email(df, text_col, label_col=None):
-      #Ask user to select an email by row or input custom text.
- #   If a row is selected, also prints the true label if available.
- 
-# Ask user input
+
+def test_email(df, text_col, label_col=None, dataset_name=None):
+        # Ask user to select an email by row or input custom text
     while True:
         choice = input("Enter 'row' to select a row number or 'text' to input custom text: ").strip().lower()
         if choice in ['row', 'text']:
@@ -129,40 +203,35 @@ def test_email(df, text_col, label_col=None):
 
     if choice == 'row':
         row_number = int(input(f"Enter row number (0-{len(df)-1}): "))
-        email_text = df.loc[row_number, 'text']
-        true_label = df[label_col].iloc[row_number] if label_col in df.columns else None
+        email_text = df.loc[row_number, text_col]
+        true_label = df[label_col].iloc[row_number] if label_col and label_col in df.columns else None
         print(f"\nSelected Email from row {row_number}:\n{email_text}")
     else:
-        email_text = input("Enter your custom email text: ")
+        email_text = input("Enter your custom email text: ") # honestly did not know what to put this is more or less temp for final
         true_label = None
 
-    # Train models on the dataset
-    X_train_vec, X_test_vec, y_train, y_test = vectorize_and_train(df, label_col, dataset_name)
+    # Ensure models/vector exist; if not, train
+    vector_path = f'./models/{dataset_name}_vector.joblib'
+    if not os.path.exists(vector_path):
+        print("Models not found. Training models now...")
+        vectorize_and_train(df, label_col, dataset_name)
 
-    # Use the same vectorizer from vectorize_and_train to transform the email
-    vectorizer = joblib.load('./models/tfidf_vectorizer.joblib')
+    # Load vector
+    vector = joblib.load(vector_path)
+    email_vec = vector.transform([email_text])
 
-    email_vec = vectorizer.transform([email_text])
-
-    # Load trained models (saved in vectorize_and_train)
+    # Load models
     predictions = {}
-    try:
-        # Logistic Regression
-        lr_model = joblib.load('./models/spam_classifier.joblib')  # saved as LR
-        predictions['Logistic Regression'] = lr_model.predict(email_vec)[0]
+    model_paths = {
+        'Logistic Regression': f'./models/{dataset_name}_logreg_model.joblib',
+        'Naive Bayes': f'./models/{dataset_name}_nb_model.joblib',
+        'Gradient Boosting': f'./models/{dataset_name}_gradientBabe.joblib'
+    }
 
-        # Naive Bayes
-        nb_model = joblib.load('./models/final_enron_model.joblib')  # saved as NB
-        predictions['Naive Bayes'] = nb_model.predict(email_vec)[0]
-
-        # Gradient Boosting (if saved)
-        gb_path = './models/final_phish_model.joblib'
-        if os.path.exists(gb_path):
-            gb_model = joblib.load(gb_path)
-            predictions['Gradient Boosting'] = gb_model.predict(email_vec)[0]
-
-    except FileNotFoundError as e:
-        print("Some models not found. Please train first.", e)
+    for name, path in model_paths.items():
+        if os.path.exists(path):
+            model = joblib.load(path)
+            predictions[name] = model.predict(email_vec)[0]
 
     # Majority vote
     counts = {0: 0, 1: 0}
@@ -171,95 +240,29 @@ def test_email(df, text_col, label_col=None):
     final_label = "Not Spam (Ham)" if counts[0] > counts[1] else "Spam"
 
     # Output
-    print("\nPredictions:")
+    print("\nPredictions per model:")
     for model_name, label in predictions.items():
-        print(f"{model_name}: {label}")
+        print(f"{model_name}: {label} ({'Spam' if label == 1 else 'Ham'})")
     print(f"\nFinal Email Prediction: {final_label}")
     if true_label is not None:
         print(f"True label: {true_label}")
 
     return email_text, predictions, final_label
-
-
-#------------------Main Training and Processing Function-------------------
-def vectorize_and_train(df, label_col, dataset_name):
-    label_col = prepare_label(df)
-    text_col = get_text_column(df)
-    
-    # Preprocessing: replace NaN in text with empty string
-    X = df[text_col].fillna('')
-    y = df[label_col]
-
-    # Train/Test split
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    # Vectorization
-    vectorizer = TfidfVectorizer(max_features=5000)
-    X_train_vec = vectorizer.fit_transform(X_train)
-    X_test_vec = vectorizer.transform(X_test)
-    print(f"Vectorization complete for {dataset_name}")
-    #dense conversion for main
-    X_train_dense = X_train_vec.toarray()
-    X_test_dense = X_test_vec.toarray()
-
-    # Standard scaling
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train_dense)
-    X_test_scaled = scaler.transform(X_test_dense)
-    print(f"Scaling complete for {dataset_name}.\n")
-# MODEL A: Naive Bayes
-    model_nb = MultinomialNB()
-    model_nb.fit(X_train_vec, y_train)
-    preds_nb = model_nb.predict(X_test_vec)
-    acc_nb = accuracy_score(y_test, preds_nb)
-    print(f"{dataset_name} - Naive Bayes Accuracy: {acc_nb:.4f}")
-
-    # MODEL B: Logistic Regression
-    model_lr = LogisticRegression(max_iter=1000)
-    model_lr.fit(X_train_vec, y_train)
-    preds_lr = model_lr.predict(X_test_vec)
-    acc_lr = accuracy_score(y_test, preds_lr)
-    print(f"{dataset_name} - Logistic Regression Accuracy: {acc_lr:.4f}")
-
-    # Save best model and vectorizer
-    best_model = model_lr
-    os.makedirs('./models', exist_ok=True)
-    joblib.dump(best_model, f'./models/{dataset_name}_logreg_model.joblib')
-   
-    joblib.dump(vectorizer, f'./models/{dataset_name}_vectorizer.joblib')
-    joblib.dump(scaler, f'./models/{dataset_name}scaler.joblib')
-    print(f"{dataset_name} models and vectorizer saved.")
-
-    # Optional: Gradient Boosting + KMeans clustering
-    model_gb = GradientBoostingClassifier(n_estimators=100, learning_rate=0.1)
-    model_gb.fit(X_train_vec, y_train)
-    preds_gb = model_gb.predict(X_test_vec)
-    acc_gb = accuracy_score(y_test, preds_gb)
-    print(f"{dataset_name} - Gradient Boosting Accuracy: {acc_gb:.4f}")
-  
-    # KMeans clustering
-    kmeans = KMeans(n_clusters=2, random_state=42, n_init=10)
-    kmeans.fit(X_train_vec)
-    ari_score = adjusted_rand_score(y_train, kmeans.labels_)
-    print(f"{dataset_name} - KMeans ARI: {ari_score:.4f}")
-    joblib.dump(model_gb, f'./models/{dataset_name}gradientBabe.joblib')
-    return X_train_vec, X_test_vec, y_train, y_test
-
 def choose_csv_and_run(folder_path='./preprocessed/'):
-    # List all CSV files in the preprocessed folder
+    # List CSV files
     csv_files = [f for f in os.listdir(folder_path) if f.endswith('.csv')]
     if not csv_files:
-        print("No CSV files found in folder:", folder_path)
+        print("No CSV files found.")
         return None, None, None, None, None, None, None, None
 
     print("\nAvailable CSV files:")
-    for i, file in enumerate(csv_files):
-        print(f"{i}: {file}")
+    for i, f in enumerate(csv_files):
+        print(f"{i}: {f}")
 
     # Ask user which CSV to process
     while True:
         try:
-            choice = int(input(f"\nEnter the number of the CSV to process (0-{len(csv_files)-1}): "))
+            choice = int(input(f"Enter CSV number (0-{len(csv_files)-1}): "))
             if 0 <= choice < len(csv_files):
                 break
             else:
@@ -268,61 +271,34 @@ def choose_csv_and_run(folder_path='./preprocessed/'):
             print("Please enter a valid integer.")
 
     selected_file = csv_files[choice]
-    dataset_name = os.path.splitext(selected_file)[0]
+    dataset_name = os.path.splitext(selected_file)[0]  # Important!
     file_path = os.path.join(folder_path, selected_file)
-    print(f"\nYou selected: {selected_file}\nProcessing dataset '{dataset_name}'...\n")
+    print(f"\nProcessing dataset '{dataset_name}'...\n")
 
     # Load CSV and prepare columns
     df = load_csv(file_path)
     text_col = get_text_column(df)
     label_col = prepare_label(df)
 
-    # Ask if testing or training
+    # Ask action
     action = int(input("Test or Train Model (1=Test, 2=Train): "))
     match action:
         case 1:
             print("Testing\n")
-            # Ask user for row or custom input
-            sampled_email = test_email(df, text_col)
-
-            # Load saved models and vectorizer
-            predictions = {}
-            try:
-                vectorizer = joblib.load('./models/enron_vectorizer.joblib')
-                X_vec = vectorizer.transform([sampled_email])
-
-                lr_model = joblib.load('./models/final_enron_model.joblib')
-                predictions['Logistic Regression'] = lr_model.predict(X_vec)[0]
-
-                nb_model = joblib.load('./models/spam_classifier.joblib')
-                predictions['Naive Bayes'] = nb_model.predict(X_vec)[0]
-
-                gb_path = './models/final_phish_model.joblib'
-                if os.path.exists(gb_path):
-                    gb_model = joblib.load(gb_path)
-                    predictions['Gradient Boosting'] = gb_model.predict(X_vec)[0]
-            except FileNotFoundError as e:
-                print("Some models not found. Please train first.", e)
-
-            return df, dataset_name, None, None, None, None, sampled_email, predictions
-
+            # Pass dataset_name here
+            email_text, predictions, final_label = test_email(df, text_col, label_col, dataset_name)
+            return df, dataset_name, None, None, None, None, email_text, predictions
         case 2:
             print("Training\n")
-            # Generate visualizations
             generate_visualizations(df, label_col, dataset_name)
-
-            # Vectorize and train models
             X_train_vec, X_test_vec, y_train, y_test = vectorize_and_train(df, label_col, dataset_name)
             print(f"\nProcessing complete for dataset: {dataset_name}\n")
-
             return df, dataset_name, X_train_vec, X_test_vec, y_train, y_test, None, None
-
         case _:
-            print("Error: Please enter a valid integer.")
+            print("Invalid choice.")
             return None, None, None, None, None, None, None, None
 
-
-# ------------------ Run the pipeline -----------------
+# ------------------ Main Run -----------------
 if __name__ == "__main__":
     df, dataset_name, X_train_vec, X_test_vec, y_train, y_test, email_text, predictions = choose_csv_and_run()
 
@@ -332,20 +308,18 @@ if __name__ == "__main__":
         ham_count = 0
 
         for model_name, label in predictions.items():
-            label_name = "SPAM" if label == 1 else "HAM"
-            print(f"{model_name}: {label} ({label_name})")
+            print(f"{model_name}: {label} ({'Spam' if label==1 else 'Ham'})")
             if label == 1:
                 spam_count += 1
             else:
                 ham_count += 1
 
-        # Final majority vote
-        final_label = "SPAM" if spam_count > ham_count else "HAM"
+        final_label = "Spam" if spam_count > ham_count else "Ham"
         print(f"\nFinal Prediction based on majority vote:")
         print(f"SPAM votes: {spam_count}, HAM votes: {ham_count}")
         print(f"Overall Predicted: {final_label}")
 
     elif X_train_vec is not None:
-        print("Training completed. Models and vectorizer are saved.")
+        print("Training completed. Models and vector are saved.")
     else:
         print("No action performed.")

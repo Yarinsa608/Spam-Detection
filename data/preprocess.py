@@ -17,8 +17,8 @@ for dir_name in output_dirs:
 print("Project directories checked/created.")
 
 
-#----------------Enron spam detection (text analysis)------------------------
-print("\nStarting Enron data processing...")
+#---------------- spam detection (text analysis)------------------------
+print("\nStarting  data processing...")
 
 nltk.download('stopwords', quiet=True)
 stop_words = set(stopwords.words('english'))
