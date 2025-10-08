@@ -5,3 +5,5 @@ matplotlib
 nltk
 streamlit
 joblib
+seaborn 
+WordCloud

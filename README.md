@@ -1,6 +1,6 @@
 # Spam-Detection
 Session 15 Group 9 Assignment 2
-🏃 How to Run the Code
+ How to Run the Code
 The project is executed using two main Python scripts that must be run sequentially from the command line.
 
 ❗ IMPORTANT: Ensure your terminal is positioned in the root directory of the project (e.g., AI4Cyber_Assignment2/) before running any commands.
@@ -31,7 +31,7 @@ The final trained models (Logistic Regression, Gradient Boosting) and the TF-IDF
 
 Model performance reports (Classification Reports and Adjusted Rand Index) are displayed in the terminal.
 
-📦 Required Libraries
+Required Libraries
 To successfully run both the data processing and model training scripts, you need the following Python libraries.
 
 You can install all required packages at once using pip:
