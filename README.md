@@ -32,7 +32,7 @@ python3 data_processing.py
 python3 model_training.py
 
 
-Enron Spam Dataset
+## Enron Spam Dataset
 
 The Enron-Spam dataset is a fantastic ressource collected by V. Metsis, I. Androutsopoulos and G. Paliouras and described in their publication "Spam Filtering with Naive Bayes - Which Naive Bayes?". The dataset contains a total of 17.171 spam and 16.545 non-spam ("ham") e-mail messages (33.716 e-mails total). The original dataset and documentation can be found here.
 
